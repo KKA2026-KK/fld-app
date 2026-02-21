@@ -1,4 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+// ─── SUPABASE CONFIG ───
+// Replace with your Supabase project URL and anon key
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://YOUR_PROJECT.supabase.co";
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || "YOUR_ANON_KEY";
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const ROOM = "fld-room-01"; // Change per session if needed
 
 const uid = () => Math.random().toString(36).substr(2, 9);
 const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -252,8 +260,9 @@ const SIM_CHAT = [
 ];
 
 function QROverlay({ onClose }) {
-  const url = typeof window !== "undefined" ? window.location.href : "";
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(url)}&bgcolor=08080A&color=E8E4DE&format=svg`;
+  const base = typeof window !== "undefined" ? window.location.origin + window.location.pathname : "";
+  const studentUrl = base + "?role=student";
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(studentUrl)}&bgcolor=08080A&color=E8E4DE&format=svg`;
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(8,8,10,.97)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ textAlign: "center", maxWidth: "400px", padding: "40px" }}>
@@ -261,8 +270,8 @@ function QROverlay({ onClose }) {
         <div style={{ background: "#E8E4DE", borderRadius: "16px", padding: "20px", display: "inline-block", marginBottom: "20px" }}>
           <img src={qrUrl} alt="QR-kode" style={{ width: "240px", height: "240px", display: "block" }} />
         </div>
-        <p style={{ fontSize: "13px", color: "#9A958E", marginBottom: "6px", wordBreak: "break-all", fontFamily: "monospace" }}>{url}</p>
-        <p style={{ fontSize: "11px", color: "#5A5650", marginBottom: "20px" }}>Studentene scanner QR-koden med mobilkamera og er inne på sekunder.</p>
+        <p style={{ fontSize: "13px", color: "#9A958E", marginBottom: "6px", wordBreak: "break-all", fontFamily: "monospace" }}>{studentUrl}</p>
+        <p style={{ fontSize: "11px", color: "#5A5650", marginBottom: "20px" }}>Studentene scanner QR-koden og kommer rett inn som student.</p>
         <button onClick={onClose} style={{ background: "transparent", border: "1px solid #1C1C20", color: "#5A5650", padding: "8px 24px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Lukk</button>
       </div>
     </div>
@@ -341,6 +350,22 @@ export default function App() {
   const [pinError, setPinError] = useState(false);
   const APP_PIN = "2026";
 
+  // Auto-detect ?role=student from QR code
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("role") === "student") {
+      setMode("student");
+      // Remove param from URL silently
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+  const [autoStudent] = useState(() => {
+    if (typeof window !== "undefined") {
+      return new URLSearchParams(window.location.search).get("role") === "student";
+    }
+    return false;
+  });
+
   const [phase, setPhase] = useState(-1);
   const [mode, setMode] = useState("student");
   const [act, setAct] = useState("stemmer");
@@ -410,24 +435,125 @@ export default function App() {
   const isT = mode === "teacher";
   const P = phase >= 0 ? PHASES[phase] : null;
   const avail = phase >= 0 ? Object.entries(ACTS).filter(([_, a]) => a.ph.includes(phase)) : [];
+  const channelRef = useRef(null);
+  const [rtConnected, setRtConnected] = useState(false);
+  const myId = useRef(uid());
 
-  // Simulations
-  useEffect(() => { if (phase < 0) return; const iv = setInterval(() => setStuds(p => p >= 128 ? p : p + Math.ceil(Math.random() * 3)), 600); return () => clearInterval(iv); }, [phase]);
-  useEffect(() => { if (phase !== 0) return; const iv = setInterval(() => { const ci = pick(checkins); setCheckinCounts(p => ({ ...p, [ci.text]: (p[ci.text] || 0) + 1 })); }, 600); return () => clearInterval(iv); }, [phase, checkins]);
-  useEffect(() => { if (phase < 1 || phase > 3) return; const iv = setInterval(() => { const t = pick(SIM); const simTags = [...xTags(t)]; if (Math.random() > .5) simTags.push(pick(CHOOSABLE_TAGS)); setVoices(p => [{ id: uid(), text: t, tags: [...new Set(simTags)], ts: Date.now(), own: false, rx: Math.random() > .6 ? { [pick(["utfordrer","gjenkjennelig","vilhoremer"])]: Math.floor(Math.random()*5)+1 } : {} }, ...p].slice(0, 150)); }, 2200 + Math.random() * 1800); return () => clearInterval(iv); }, [phase]);
-  useEffect(() => { if (act !== "maktkart" || mapMode === "intro") return; const iv = setInterval(() => { const aIdx = Math.floor(Math.random() * MA.length); const a = MA[aIdx]; const s = simPos(aIdx); setMapDots(p => [...p, { id: uid(), aid: a.id, x: cl(s.cx + (Math.random() - .5) * s.s * 2, 5, 95), y: cl(s.cy + (Math.random() - .5) * s.s * 2, 5, 95), own: false }].slice(-300)); }, 1000); return () => clearInterval(iv); }, [act, mapMode, actorSet]);
-  useEffect(() => { if (act !== "verdilinje") return; const iv = setInterval(() => setVVotes(p => [...p, { id: uid(), v: Math.random() * 100, si: pi % customThemes.length }].slice(-200)), 700); return () => clearInterval(iv); }, [act, pi, customThemes.length]);
-  useEffect(() => { if (act !== "perspektiv") return; const iv = setInterval(() => { const r = pick(ROLES); setPersp(p => [{ id: uid(), role: r.role, c: r.c, e: r.e, text: pick(["Systemet er ikke laget for meg — men ingen spør hvorfor", "Fra mitt ståsted handler det om tillit, ikke regler", "Ingen spør meg hva jeg trenger. De antar", "Jeg kjenner på kroppen det dere diskuterer som teori", "Dere snakker om meg, men ikke med meg", "Kvalitet måles i det som kan telles, aldri i det som betyr noe", "Jeg har tre språk men blir vurdert som om jeg mangler ett", "Endringen skjer så sakte at ingen merker den", "Jeg ser det ingen andre ser, men kan ikke si det høyt"]), ts: Date.now() }, ...p].slice(0, 20)); }, 8000); return () => clearInterval(iv); }, [act]);
-  useEffect(() => { if (act !== "blindsone") return; const iv = setInterval(() => setBlinds(p => [{ id: uid(), text: pick(["Funksjonshemmede barn er usynlige", "Skeive familier er fraværende", "Klasseperspektivet forsvinner bak 'kultur'", "Barna — vi snakker OM dem, aldri MED dem", "Besteforeldrenes rolle er usynlig"]), ts: Date.now() }, ...p].slice(0, 40)), 3500); return () => clearInterval(iv); }, [act]);
-  useEffect(() => { if (phase !== 4) return; const iv = setInterval(() => setCommits(p => [{ id: uid(), text: pick(["Stille spørsmål ved 'det normale'", "Lytte etter den stilleste stemmen", "Spørre 'for hvem?' neste gang", "Lese fra et perspektiv jeg ignorerer", "Synliggjøre maktstrukturer"]), ts: Date.now() }, ...p].slice(0, 50)), 2800); return () => clearInterval(iv); }, [phase]);
+  // ─── SUPABASE REALTIME CHANNEL ───
+  useEffect(() => {
+    if (!unlocked) return;
+    const channel = supabase.channel(ROOM, {
+      config: { broadcast: { self: true } },
+    });
+
+    channel.on("broadcast", { event: "state" }, ({ payload }) => {
+      // Teacher broadcasts state → students follow
+      if (payload.from === myId.current) return;
+      if (payload.phase !== undefined) setPhase(payload.phase);
+      if (payload.act) setAct(payload.act);
+      if (payload.pi !== undefined) setPi(payload.pi);
+      if (payload.actorSet) setActorSet(payload.actorSet);
+      if (payload.customThemes) setCustomThemes(payload.customThemes);
+      if (payload.checkins) setCheckins(payload.checkins);
+    });
+
+    channel.on("broadcast", { event: "join" }, () => {
+      setStuds(p => p + 1);
+    });
+
+    channel.on("broadcast", { event: "checkin" }, ({ payload }) => {
+      if (payload.from === myId.current) return;
+      payload.items.forEach(text => {
+        setCheckinCounts(p => ({ ...p, [text]: (p[text] || 0) + 1 }));
+      });
+    });
+
+    channel.on("broadcast", { event: "voice" }, ({ payload }) => {
+      if (payload.from === myId.current) return;
+      setVoices(p => [{ id: payload.id, text: payload.text, tags: payload.tags, ts: payload.ts, own: false, rx: {} }, ...p].slice(0, 150));
+    });
+
+    channel.on("broadcast", { event: "reaction" }, ({ payload }) => {
+      if (payload.from === myId.current) return;
+      setVoices(p => p.map(v => v.id === payload.voiceId ? { ...v, rx: { ...v.rx, [payload.rKey]: (v.rx?.[payload.rKey] || 0) + 1 } } : v));
+    });
+
+    channel.on("broadcast", { event: "mapdot" }, ({ payload }) => {
+      if (payload.from === myId.current) return;
+      setMapDots(p => [...p, { id: payload.id, aid: payload.aid, x: payload.x, y: payload.y, own: false }].slice(-300));
+    });
+
+    channel.on("broadcast", { event: "vvote" }, ({ payload }) => {
+      if (payload.from === myId.current) return;
+      setVVotes(p => [...p, { id: payload.id, v: payload.v, si: payload.si }].slice(-200));
+    });
+
+    channel.on("broadcast", { event: "persp" }, ({ payload }) => {
+      if (payload.from === myId.current) return;
+      setPersp(p => [{ id: payload.id, role: payload.role, c: payload.c, e: payload.e, text: payload.text, ts: payload.ts }, ...p].slice(0, 20));
+    });
+
+    channel.on("broadcast", { event: "blind" }, ({ payload }) => {
+      if (payload.from === myId.current) return;
+      setBlinds(p => [{ id: payload.id, text: payload.text, ts: payload.ts }, ...p].slice(0, 40));
+    });
+
+    channel.on("broadcast", { event: "commit" }, ({ payload }) => {
+      if (payload.from === myId.current) return;
+      setCommits(p => [{ id: payload.id, text: payload.text, ts: payload.ts }, ...p].slice(0, 50));
+    });
+
+    channel.on("broadcast", { event: "newrole" }, ({ payload }) => {
+      if (payload.from === myId.current) return;
+      setCustomRoles(p => [...p, { role: payload.role, e: payload.e, c: payload.c }]);
+    });
+
+    channel.on("broadcast", { event: "insight" }, ({ payload }) => {
+      if (payload.from === myId.current) return;
+      setMdInsights(p => [{ id: payload.id, text: payload.text }, ...p].slice(0, 30));
+    });
+
+    channel.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        setRtConnected(true);
+        // Students announce presence
+        if (mode === "student") {
+          channel.send({ type: "broadcast", event: "join", payload: { from: myId.current } });
+        }
+      }
+    });
+
+    channelRef.current = channel;
+    return () => { supabase.removeChannel(channel); };
+  }, [unlocked]);
+
+  // Teacher broadcasts state changes
+  const broadcastState = useCallback((overrides = {}) => {
+    if (!channelRef.current || !isT) return;
+    channelRef.current.send({
+      type: "broadcast", event: "state",
+      payload: { from: myId.current, phase, act, pi, actorSet, customThemes, checkins, ...overrides },
+    });
+  }, [phase, act, pi, actorSet, customThemes, checkins, isT]);
+
+  // Auto-broadcast when teacher changes phase/act/pi
+  useEffect(() => { if (isT && channelRef.current && phase >= 0) broadcastState(); }, [phase, act, pi, actorSet]);
+
+  // Broadcast helper for student actions
+  const bc = useCallback((event, payload) => {
+    if (!channelRef.current) return;
+    channelRef.current.send({ type: "broadcast", event, payload: { from: myId.current, ...payload } });
+  }, []);
+
+  // Mikro-dialog timer (local)
   useEffect(() => { if (!mdTA || mdTimer <= 0) return; const iv = setInterval(() => setMdTimer(p => { if (p <= 1) { setMdTA(false); return 0; } return p - 1; }), 1000); return () => clearInterval(iv); }, [mdTA, mdTimer]);
+  // Chat simulation for stille dialog (stays local — would need pairing server for real)
   useEffect(() => { if (mdScreen !== "stille" || mdTimer <= 0) return; let to; const cycle = () => { const delay = 5000 + Math.random() * 6000; to = setTimeout(() => { setPartnerTyping(true); const typeTime = 1500 + Math.random() * 2500; setTimeout(() => { setPartnerTyping(false); setMdChat(p => [...p, { id: uid(), text: pick(SIM_CHAT), from: "partner" }]); cycle(); }, typeTime); }, delay); }; cycle(); return () => { clearTimeout(to); setPartnerTyping(false); }; }, [mdScreen, mdTimer]);
-  useEffect(() => { if (mdScreen !== "debrief") return; const iv = setInterval(() => setMdInsights(p => [{ id: uid(), text: pick(["Vi oppdaget ulik forståelse av makt", "Partneren fikk meg til å se min posisjon", "Vi var enige om problemet men uenige om løsningen", "Å lytte først endret samtalen", "Ubehag er nødvendig for reell læring"]) }, ...p].slice(0, 30)), 2500); return () => clearInterval(iv); }, [mdScreen]);
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: "smooth" }); }, [mdChat]);
   useEffect(() => { if (phase >= 0 && avail.length && !avail.find(([k]) => k === act)) setAct(avail[0][0]); }, [phase]);
 
-  const addVoice = () => { if (!inp.trim()) return; const autoTags = xTags(inp); const allTags = [...new Set([...selTags, ...autoTags])]; setVoices(p => [{ id: uid(), text: inp, tags: allTags, ts: Date.now(), own: true, rx: {} }, ...p]); setInp(""); setSelTags([]); };
-  const reactTo = (voiceId, rKey) => { setReactions(p => { const cur = { ...p }; if (!cur[voiceId]) cur[voiceId] = {}; cur[voiceId][rKey] = (cur[voiceId][rKey] || 0) + 1; return cur; }); setVoices(p => p.map(v => v.id === voiceId ? { ...v, rx: { ...v.rx, [rKey]: (v.rx?.[rKey] || 0) + 1 } } : v)); };
+  const addVoice = () => { if (!inp.trim()) return; const autoTags = xTags(inp); const allTags = [...new Set([...selTags, ...autoTags])]; const v = { id: uid(), text: inp, tags: allTags, ts: Date.now(), own: true, rx: {} }; setVoices(p => [v, ...p].slice(0, 150)); bc("voice", { id: v.id, text: v.text, tags: v.tags, ts: v.ts }); setInp(""); setSelTags([]); };
+  const reactTo = (voiceId, rKey) => { setReactions(p => { const cur = { ...p }; if (!cur[voiceId]) cur[voiceId] = {}; cur[voiceId][rKey] = (cur[voiceId][rKey] || 0) + 1; return cur; }); setVoices(p => p.map(v => v.id === voiceId ? { ...v, rx: { ...v.rx, [rKey]: (v.rx?.[rKey] || 0) + 1 } } : v)); bc("reaction", { voiceId, rKey }); };
   const startMd = (type) => { setMdType(type); setMdRound(p => p + 1); setMdDpi(p => p + 1); setMdTimer(300); setMdInsight(""); setMdChat([]); setMdFound(false); if (type === "fysisk") { const ci = Math.floor(Math.random() * PCOL.length); setMdPartner({ color: PCOL[ci], emoji: PEMO[ci], num: Math.floor(Math.random() * 50) + 1 }); setMdScreen("fysisk"); setMdTA(false); } else { setMdPartner(null); setMdScreen("stille"); setMdTA(true); } };
 
   const curDPrompt = DIALOG_PROMPTS[mdDpi % DIALOG_PROMPTS.length];
@@ -473,7 +599,10 @@ export default function App() {
   );
 
   // ─── WELCOME ───
-  if (phase < 0) return (
+  // Auto-enter as student if from QR
+  useEffect(() => { if (autoStudent && unlocked && phase < 0) { setPhase(0); setMode("student"); } }, [autoStudent, unlocked]);
+
+  if (phase < 0 && !autoStudent) return (
     <div style={{ minHeight: "100vh", background: "#08080A", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Georgia',serif", position: "relative", overflow: "hidden" }}>
       {[...Array(6)].map((_, i) => <div key={i} style={{ position: "absolute", width: `${150 + i * 85}px`, height: `${150 + i * 85}px`, borderRadius: "50%", border: `1px solid rgba(192,104,64,${.08 - i * .01})`, top: "50%", left: "50%", transform: "translate(-50%,-50%)", animation: `breathe ${4 + i * .6}s ease-in-out infinite` }} />)}
       <div style={{ textAlign: "center", zIndex: 1, padding: "32px", maxWidth: "520px", color: "#E8E4DE" }}>
@@ -679,7 +808,7 @@ export default function App() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#5A8060", animation: "blink 2s infinite" }} />
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: rtConnected ? "#5A8060" : "#C06840", animation: rtConnected ? "blink 2s infinite" : "none" }} title={rtConnected ? "Tilkoblet sanntid" : "Kobler til..."} />
               <span style={{ fontSize: "11px", color: "#9A958E" }}>{Math.min(studs, 128)}</span>
             </div>
             <span style={{ fontSize: "11px", color: "#3A3835" }}>{voices.length} bidrag</span>
@@ -768,7 +897,7 @@ export default function App() {
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "14px" }}>
                   <span style={{ fontSize: "10px", color: myCheckins.length > 0 ? P.c : "#3A3835" }}>{myCheckins.length}/3 valgt</span>
-                  <button onClick={() => { if (myCheckins.length > 0) { setCheckedIn(true); myCheckins.forEach(t => setCheckinCounts(p => ({ ...p, [t]: (p[t] || 0) + 1 }))); } }} disabled={myCheckins.length === 0} style={{ background: myCheckins.length > 0 ? P.c : "#1C1C20", border: "none", color: myCheckins.length > 0 ? "#E8E4DE" : "#3A3835", padding: "12px 28px", fontSize: "12px", letterSpacing: "1px", cursor: myCheckins.length > 0 ? "pointer" : "default", fontFamily: "'Georgia',serif" }}>Sjekk inn</button>
+                  <button onClick={() => { if (myCheckins.length > 0) { setCheckedIn(true); myCheckins.forEach(t => setCheckinCounts(p => ({ ...p, [t]: (p[t] || 0) + 1 }))); bc("checkin", { items: myCheckins }); } }} disabled={myCheckins.length === 0} style={{ background: myCheckins.length > 0 ? P.c : "#1C1C20", border: "none", color: myCheckins.length > 0 ? "#E8E4DE" : "#3A3835", padding: "12px 28px", fontSize: "12px", letterSpacing: "1px", cursor: myCheckins.length > 0 ? "pointer" : "default", fontFamily: "'Georgia',serif" }}>Sjekk inn</button>
                 </div>
               </div>
             )}
@@ -1004,7 +1133,9 @@ export default function App() {
                   const x = cl(((e.clientX - r.left) / r.width) * 100, 2, 98);
                   const y = cl(100 - ((e.clientY - r.top) / r.height) * 100, 2, 98);
                   setMapPl(p => ({ ...p, [MA[mapAi].id]: { x, y } }));
-                  setMapDots(p => [...p.filter(d => !(d.own && d.aid === MA[mapAi].id)), { id: uid(), aid: MA[mapAi].id, x, y, own: true }]);
+                  const dotId = uid();
+                  setMapDots(p => [...p.filter(d => !(d.own && d.aid === MA[mapAi].id)), { id: dotId, aid: MA[mapAi].id, x, y, own: true }]);
+                  bc("mapdot", { id: dotId, aid: MA[mapAi].id, x, y });
                   // Auto-advance to next unplaced actor
                   const nextUnplaced = MA.findIndex((a, idx) => idx > mapAi && !mapPl[a.id]);
                   if (nextUnplaced >= 0) {
@@ -1061,9 +1192,9 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  <textarea value={pInp} onChange={e => setPInp(e.target.value)} placeholder={`Argumenter som ${pRole.role.toLowerCase()}...`} style={{ width: "100%", boxSizing: "border-box", background: "#08080A", border: "1px solid #1C1C20", color: "#E8E4DE", fontSize: "13px", fontFamily: "'Georgia',serif", outline: "none", padding: "12px", lineHeight: 1.7, resize: "none", height: "75px" }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && pInp.trim()) { e.preventDefault(); setPersp(p => [{ id: uid(), role: pRole.role, c: pRole.c, e: pRole.e || "👤", text: pInp, ts: Date.now(), own: true }, ...p]); setPInp(""); }}} />
+                  <textarea value={pInp} onChange={e => setPInp(e.target.value)} placeholder={`Argumenter som ${pRole.role.toLowerCase()}...`} style={{ width: "100%", boxSizing: "border-box", background: "#08080A", border: "1px solid #1C1C20", color: "#E8E4DE", fontSize: "13px", fontFamily: "'Georgia',serif", outline: "none", padding: "12px", lineHeight: 1.7, resize: "none", height: "75px" }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && pInp.trim()) { e.preventDefault(); const pid = uid(); const pData = { id: pid, role: pRole.role, c: pRole.c, e: pRole.e || "👤", text: pInp, ts: Date.now() }; setPersp(p => [{ ...pData, own: true }, ...p]); bc("persp", pData); setPInp(""); }}} />
                   <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-                    <button onClick={() => { if (pInp.trim()) { setPersp(p => [{ id: uid(), role: pRole.role, c: pRole.c, e: pRole.e || "👤", text: pInp, ts: Date.now(), own: true }, ...p]); setPInp(""); } }} style={{ flex: 1, background: pRole.c, border: "none", color: "#E8E4DE", padding: "10px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Del perspektiv</button>
+                    <button onClick={() => { if (pInp.trim()) { const pid = uid(); const pData = { id: pid, role: pRole.role, c: pRole.c, e: pRole.e || "👤", text: pInp, ts: Date.now() }; setPersp(p => [{ ...pData, own: true }, ...p]); bc("persp", pData); setPInp(""); } }} style={{ flex: 1, background: pRole.c, border: "none", color: "#E8E4DE", padding: "10px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Del perspektiv</button>
                     <button onClick={() => setPRole(pick(allRoles))} style={{ background: "transparent", border: `1px solid ${pRole.c}`, color: pRole.c, padding: "10px 16px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Ny rolle ↻</button>
                   </div>
                 </div>
@@ -1121,7 +1252,7 @@ export default function App() {
                 {!isT && !vVoted && (
                   <div>
                     <input type="range" min="0" max="100" value={vRange} onChange={e => setVRange(Number(e.target.value))} style={{ width: "100%", accentColor: P.c, WebkitAppearance: "none", height: "6px", background: "#1C1C20", borderRadius: "3px", outline: "none" }} />
-                    <button onClick={() => { setVVotes(p => [...p, { id: uid(), v: vRange, si: themeIdx }]); setVVoted(true); }} style={{ marginTop: "10px", background: P.c, border: "none", color: "#E8E4DE", padding: "10px 24px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Stem</button>
+                    <button onClick={() => { const vid = uid(); setVVotes(p => [...p, { id: vid, v: vRange, si: themeIdx }]); setVVoted(true); bc("vvote", { id: vid, v: vRange, si: themeIdx }); }} style={{ marginTop: "10px", background: P.c, border: "none", color: "#E8E4DE", padding: "10px 24px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Stem</button>
                   </div>
                 )}
                 {vVoted && !isT && <p style={{ fontSize: "12px", color: "#5A8060", fontStyle: "italic" }}>✓ Registrert.</p>}
@@ -1337,8 +1468,8 @@ export default function App() {
               <p style={{ fontSize: isT ? "18px" : "15px", fontStyle: "italic", lineHeight: 1.5, margin: "0 0 14px" }}>«{BLIND_Q[bIdx % BLIND_Q.length]}»</p>
               {!isT && (
                 <div style={{ display: "flex", gap: "8px" }}>
-                  <input value={bInp} onChange={e => setBInp(e.target.value)} placeholder="Hvem/hva er usynlig..." style={{ flex: 1, background: "#08080A", border: "1px solid #1C1C20", color: "#E8E4DE", fontSize: "13px", fontFamily: "'Georgia',serif", outline: "none", padding: "10px 14px" }} onKeyDown={e => { if (e.key === "Enter" && bInp.trim()) { setBlinds(p => [{ id: uid(), text: bInp, ts: Date.now(), own: true }, ...p]); setBInp(""); } }} />
-                  <button onClick={() => { if (bInp.trim()) { setBlinds(p => [{ id: uid(), text: bInp, ts: Date.now(), own: true }, ...p]); setBInp(""); } }} style={{ background: P.c, border: "none", color: "#E8E4DE", padding: "10px 20px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Del</button>
+                  <input value={bInp} onChange={e => setBInp(e.target.value)} placeholder="Hvem/hva er usynlig..." style={{ flex: 1, background: "#08080A", border: "1px solid #1C1C20", color: "#E8E4DE", fontSize: "13px", fontFamily: "'Georgia',serif", outline: "none", padding: "10px 14px" }} onKeyDown={e => { if (e.key === "Enter" && bInp.trim()) { const bid = uid(); setBlinds(p => [{ id: bid, text: bInp, ts: Date.now(), own: true }, ...p]); bc("blind", { id: bid, text: bInp, ts: Date.now() }); setBInp(""); } }} />
+                  <button onClick={() => { if (bInp.trim()) { const bid = uid(); setBlinds(p => [{ id: bid, text: bInp, ts: Date.now(), own: true }, ...p]); bc("blind", { id: bid, text: bInp, ts: Date.now() }); setBInp(""); } }} style={{ background: P.c, border: "none", color: "#E8E4DE", padding: "10px 20px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Del</button>
                 </div>
               )}
               {isT && <button onClick={() => setBIdx(p => p + 1)} style={{ background: "transparent", border: `1px solid ${P.c}40`, color: P.c, padding: "5px 14px", fontSize: "10px", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Neste →</button>}
@@ -1362,7 +1493,7 @@ export default function App() {
                   </div>
                   <div style={{ display: "flex", gap: "8px" }}>
                     <input value={newRoleDesc} onChange={e => setNewRoleDesc(e.target.value)} placeholder="Kort beskrivelse (f.eks. «Usynlig i pensum, synlig i smerten»)" style={{ flex: 1, background: "#08080A", border: "1px solid #1C1C20", color: "#E8E4DE", fontSize: "12px", fontFamily: "'Georgia',serif", outline: "none", padding: "10px 14px" }} onKeyDown={e => { if (e.key === "Enter" && newRoleName.trim()) { const cols = ["#C06840","#4A6090","#5A8060","#907050","#7A4A70","#5A8A7A","#8A6A40","#6A5A8A","#8A5050","#4A7A7A"]; setCustomRoles(p => [...p, { role: newRoleName, desc: newRoleDesc || "Opprettet av student", c: pick(cols), e: "👤" }]); setBlinds(p => [{ id: uid(), text: `Ny rolle opprettet: ${newRoleName}`, ts: Date.now(), own: true, isRole: true }, ...p]); setNewRoleName(""); setNewRoleDesc(""); }}} />
-                    <button onClick={() => { if (newRoleName.trim()) { const cols = ["#C06840","#4A6090","#5A8060","#907050","#7A4A70","#5A8A7A","#8A6A40","#6A5A8A","#8A5050","#4A7A7A"]; setCustomRoles(p => [...p, { role: newRoleName, desc: newRoleDesc || "Opprettet av student", c: pick(cols), e: "👤" }]); setBlinds(p => [{ id: uid(), text: `Ny rolle opprettet: ${newRoleName}`, ts: Date.now(), own: true, isRole: true }, ...p]); setNewRoleName(""); setNewRoleDesc(""); }}} style={{ background: "#5A8060", border: "none", color: "#E8E4DE", padding: "10px 16px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif", whiteSpace: "nowrap" }}>+ Opprett rolle</button>
+                    <button onClick={() => { if (newRoleName.trim()) { const cols = ["#C06840","#4A6090","#5A8060","#907050","#7A4A70","#5A8A7A","#8A6A40","#6A5A8A","#8A5050","#4A7A7A"]; const c = pick(cols); setCustomRoles(p => [...p, { role: newRoleName, desc: newRoleDesc || "Opprettet av student", c, e: "👤" }]); const bid = uid(); setBlinds(p => [{ id: bid, text: `Ny rolle opprettet: ${newRoleName}`, ts: Date.now(), own: true, isRole: true }, ...p]); bc("blind", { id: bid, text: `Ny rolle opprettet: ${newRoleName}`, ts: Date.now() }); bc("newrole", { role: newRoleName, e: "👤", c }); setNewRoleName(""); setNewRoleDesc(""); }}} style={{ background: "#5A8060", border: "none", color: "#E8E4DE", padding: "10px 16px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif", whiteSpace: "nowrap" }}>+ Opprett rolle</button>
                   </div>
                 </div>
               )}
@@ -1478,8 +1609,8 @@ export default function App() {
               <p style={{ fontSize: "12px", color: "#7A756F", margin: "0 0 14px", fontStyle: "italic" }}>Formuler én handling du forplikter deg til.</p>
               {!isT && (
                 <div style={{ display: "flex", gap: "8px" }}>
-                  <input value={cInp} onChange={e => setCInp(e.target.value)} placeholder="Jeg forplikter meg til å..." style={{ flex: 1, background: "#08080A", border: "1px solid #1C1C20", color: "#E8E4DE", fontSize: "13px", fontFamily: "'Georgia',serif", outline: "none", padding: "12px" }} onKeyDown={e => { if (e.key === "Enter" && cInp.trim()) { setCommits(p => [{ id: uid(), text: cInp, ts: Date.now(), own: true }, ...p]); setCInp(""); } }} />
-                  <button onClick={() => { if (cInp.trim()) { setCommits(p => [{ id: uid(), text: cInp, ts: Date.now(), own: true }, ...p]); setCInp(""); } }} style={{ background: P.c, border: "none", color: "#E8E4DE", padding: "12px 20px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Forplikt</button>
+                  <input value={cInp} onChange={e => setCInp(e.target.value)} placeholder="Jeg forplikter meg til å..." style={{ flex: 1, background: "#08080A", border: "1px solid #1C1C20", color: "#E8E4DE", fontSize: "13px", fontFamily: "'Georgia',serif", outline: "none", padding: "12px" }} onKeyDown={e => { if (e.key === "Enter" && cInp.trim()) { const cid = uid(); setCommits(p => [{ id: cid, text: cInp, ts: Date.now(), own: true }, ...p]); bc("commit", { id: cid, text: cInp, ts: Date.now() }); setCInp(""); } }} />
+                  <button onClick={() => { if (cInp.trim()) { const cid = uid(); setCommits(p => [{ id: cid, text: cInp, ts: Date.now(), own: true }, ...p]); bc("commit", { id: cid, text: cInp, ts: Date.now() }); setCInp(""); } }} style={{ background: P.c, border: "none", color: "#E8E4DE", padding: "12px 20px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Forplikt</button>
                 </div>
               )}
             </div>
