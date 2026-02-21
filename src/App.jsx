@@ -602,7 +602,16 @@ export default function App() {
   // Auto-enter as student if from QR
   useEffect(() => { if (autoStudent && unlocked && phase < 0) { setPhase(0); setMode("student"); } }, [autoStudent, unlocked]);
 
-  if (phase < 0 && !autoStudent) return (
+  if (phase < 0) {
+    if (autoStudent) return (
+      <div style={{ minHeight: "100vh", background: "#08080A", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Georgia',serif", color: "#5A5650" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: "9px", letterSpacing: "6px", color: "#C06840", marginBottom: "20px", textTransform: "uppercase" }}>Frigjørende Læringsdialogi</div>
+          <p>Kobler til...</p>
+        </div>
+      </div>
+    );
+    return (
     <div style={{ minHeight: "100vh", background: "#08080A", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Georgia',serif", position: "relative", overflow: "hidden" }}>
       {[...Array(6)].map((_, i) => <div key={i} style={{ position: "absolute", width: `${150 + i * 85}px`, height: `${150 + i * 85}px`, borderRadius: "50%", border: `1px solid rgba(192,104,64,${.08 - i * .01})`, top: "50%", left: "50%", transform: "translate(-50%,-50%)", animation: `breathe ${4 + i * .6}s ease-in-out infinite` }} />)}
       <div style={{ textAlign: "center", zIndex: 1, padding: "32px", maxWidth: "520px", color: "#E8E4DE" }}>
@@ -790,6 +799,7 @@ export default function App() {
       <style>{`@keyframes breathe{0%,100%{transform:translate(-50%,-50%) scale(1);opacity:.25}50%{transform:translate(-50%,-50%) scale(1.03);opacity:.6}}`}</style>
     </div>
   );
+  }
 
   const totalCI = Object.values(checkinCounts).reduce((a, b) => a + b, 0);
   const maxCI = Math.max(...Object.values(checkinCounts), 1);
