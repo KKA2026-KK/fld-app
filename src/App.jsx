@@ -616,19 +616,7 @@ export default function App() {
   );
 
   // ─── WELCOME ───
-  // Auto-enter as student if from QR
-  useEffect(() => { if (autoStudent && unlocked && phase < 0) { setPhase(0); setMode("student"); } }, [autoStudent, unlocked]);
-
-  if (phase < 0) {
-    if (autoStudent) return (
-      <div style={{ minHeight: "100vh", background: "#08080A", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Georgia',serif", color: "#5A5650" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: "9px", letterSpacing: "6px", color: "#C06840", marginBottom: "20px", textTransform: "uppercase" }}>Frigjørende Læringsdialogi</div>
-          <p>Kobler til...</p>
-        </div>
-      </div>
-    );
-    return (
+  if (phase < 0) return (
     <div style={{ minHeight: "100vh", background: "#08080A", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Georgia',serif", position: "relative", overflow: "hidden" }}>
       {[...Array(6)].map((_, i) => <div key={i} style={{ position: "absolute", width: `${150 + i * 85}px`, height: `${150 + i * 85}px`, borderRadius: "50%", border: `1px solid rgba(192,104,64,${.08 - i * .01})`, top: "50%", left: "50%", transform: "translate(-50%,-50%)", animation: `breathe ${4 + i * .6}s ease-in-out infinite` }} />)}
       <div style={{ textAlign: "center", zIndex: 1, padding: "32px", maxWidth: "520px", color: "#E8E4DE" }}>
@@ -636,12 +624,16 @@ export default function App() {
         <h1 style={{ fontSize: "clamp(28px,5.5vw,58px)", fontWeight: 400, lineHeight: 1.08, marginBottom: "8px" }}>Alle stemmer</h1>
         <h1 style={{ fontSize: "clamp(28px,5.5vw,58px)", color: "#C06840", fontWeight: 400, fontStyle: "italic", lineHeight: 1.08, marginBottom: "36px" }}>teller.</h1>
         <p style={{ color: "#5A5650", fontSize: "14px", lineHeight: 1.8, marginBottom: "32px" }}>Et polyvokalt læringsrom for 100+ studenter. Utforsk makt, ulikhet og frigjøring — sammen, i sanntid.</p>
-        <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
-          <button onClick={() => { setPhase(0); setMode("teacher"); }} style={{ background: "#C06840", border: "1px solid #C06840", color: "#08080A", padding: "14px 36px", fontSize: "12px", letterSpacing: "2px", textTransform: "uppercase", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Start som underviser</button>
-          <button onClick={() => { setPhase(0); setMode("student"); }} style={{ background: "transparent", border: "1px solid #C06840", color: "#C06840", padding: "14px 36px", fontSize: "12px", letterSpacing: "2px", textTransform: "uppercase", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Bli med som student</button>
-        </div>
-        <button onClick={() => setShowTutorial(true)} style={{ display: "block", margin: "20px auto 0", background: "transparent", border: "1px solid #1C1C20", color: "#5A5650", padding: "10px 24px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif", letterSpacing: "1px" }}>📖 Slik bruker du appen</button>
-        <button onClick={() => setShowSetup(true)} style={{ display: "block", margin: "10px auto 0", background: "transparent", border: "1px solid #C0684040", color: "#C06840", padding: "10px 24px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif", letterSpacing: "1px" }}>⚙ Forbered forelesning</button>
+        {autoStudent ? (
+          <button onClick={() => { setPhase(0); setMode("student"); }} style={{ background: "#C06840", border: "1px solid #C06840", color: "#08080A", padding: "14px 36px", fontSize: "12px", letterSpacing: "2px", textTransform: "uppercase", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Bli med i forelesningen</button>
+        ) : (
+          <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
+            <button onClick={() => { setPhase(0); setMode("teacher"); }} style={{ background: "#C06840", border: "1px solid #C06840", color: "#08080A", padding: "14px 36px", fontSize: "12px", letterSpacing: "2px", textTransform: "uppercase", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Start som underviser</button>
+            <button onClick={() => { setPhase(0); setMode("student"); }} style={{ background: "transparent", border: "1px solid #C06840", color: "#C06840", padding: "14px 36px", fontSize: "12px", letterSpacing: "2px", textTransform: "uppercase", cursor: "pointer", fontFamily: "'Georgia',serif" }}>Bli med som student</button>
+          </div>
+        )}
+        {!autoStudent && <button onClick={() => setShowTutorial(true)} style={{ display: "block", margin: "20px auto 0", background: "transparent", border: "1px solid #1C1C20", color: "#5A5650", padding: "10px 24px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif", letterSpacing: "1px" }}>📖 Slik bruker du appen</button>}
+        {!autoStudent && <button onClick={() => setShowSetup(true)} style={{ display: "block", margin: "10px auto 0", background: "transparent", border: "1px solid #C0684040", color: "#C06840", padding: "10px 24px", fontSize: "11px", cursor: "pointer", fontFamily: "'Georgia',serif", letterSpacing: "1px" }}>⚙ Forbered forelesning</button>}
         <div style={{ marginTop: "48px", color: "#1C1C20", fontSize: "9px", letterSpacing: "3px" }}>FREIRE · HOOKS · BOURDIEU · BIGGS</div>
       </div>
       {showTutorial && <TutorialOverlay onClose={() => setShowTutorial(false)} />}
@@ -816,7 +808,6 @@ export default function App() {
       <style>{`@keyframes breathe{0%,100%{transform:translate(-50%,-50%) scale(1);opacity:.25}50%{transform:translate(-50%,-50%) scale(1.03);opacity:.6}}`}</style>
     </div>
   );
-  }
 
   const totalCI = Object.values(checkinCounts).reduce((a, b) => a + b, 0);
   const maxCI = Math.max(...Object.values(checkinCounts), 1);
