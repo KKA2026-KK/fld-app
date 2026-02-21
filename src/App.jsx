@@ -1,12 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { createClient } from "@supabase/supabase-js";
 
 // ─── SUPABASE CONFIG ───
 // Replace with your Supabase project URL and anon key
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://YOUR_PROJECT.supabase.co";
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || "YOUR_ANON_KEY";
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-const ROOM = "fld-room-01"; // Change per session if needed
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || "";
+const ROOM = "fld-room-01";
+let supabase = null;
+
+// Dynamic import to avoid build failure if package not installed
+const initSupabase = async () => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    if (SUPABASE_URL && SUPABASE_KEY) {
+      supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    }
+  } catch (e) {
+    console.log("Supabase not available, running in local mode");
+  }
+};
 
 const uid = () => Math.random().toString(36).substr(2, 9);
 const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -442,9 +453,13 @@ export default function App() {
   // ─── SUPABASE REALTIME CHANNEL ───
   useEffect(() => {
     if (!unlocked) return;
-    const channel = supabase.channel(ROOM, {
-      config: { broadcast: { self: true } },
-    });
+    let channel = null;
+    const setup = async () => {
+      await initSupabase();
+      if (!supabase) { console.log("No Supabase — running locally"); return; }
+      channel = supabase.channel(ROOM, {
+        config: { broadcast: { self: true } },
+      });
 
     channel.on("broadcast", { event: "state" }, ({ payload }) => {
       // Teacher broadcasts state → students follow
@@ -524,7 +539,9 @@ export default function App() {
     });
 
     channelRef.current = channel;
-    return () => { supabase.removeChannel(channel); };
+    }; // end setup()
+    setup();
+    return () => { if (channelRef.current && supabase) supabase.removeChannel(channelRef.current); };
   }, [unlocked]);
 
   // Teacher broadcasts state changes
